@@ -10,11 +10,10 @@ import com.RutaDelSabor.ruta.security.JwtUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.userdetails.UserDetails; // Importar UserDetails
-import org.springframework.security.core.userdetails.UserDetailsService; // Importar UserDetailsService
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-
 
 @Service
 public class AuthService {
@@ -23,7 +22,7 @@ public class AuthService {
     private AuthenticationManager authenticationManager;
 
     @Autowired
-    private UserDetailsService userDetailsService; // Usar UserDetailsServiceImpl
+    private UserDetailsService userDetailsService;
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -32,62 +31,70 @@ public class AuthService {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
-    private IClienteDAO clienteRepository; // Repositorio de clientes
-    @Autowired
-  private IRolDAO rolRepository;
+    private IClienteDAO clienteRepository;
 
+    @Autowired
+    private IRolDAO rolRepository;
+
+    // REGISTRO DE CLIENTES
     public Cliente register(RegisterRequest request) {
-        // 1. Verificar si el correo ya existe
         if (clienteRepository.findByCorreo(request.getCorreo()).isPresent()) {
-            throw new RuntimeException("El correo electrónico ya está registrado"); // O una excepción personalizada
+            throw new RuntimeException("El correo electrónico ya está registrado");
         }
         
-       // --- AÑADIR ESTA LÓGICA ---
-    Rol userRol = rolRepository.findByName("USER") // Asume que tienes un rol "USER" en tu BBDD
-        .orElseThrow(() -> new RuntimeException("Error: Rol 'USER' no encontrado."));
-    // --- FIN ---
+        // CORRECCIÓN CRÍTICA: Buscar "ROLE_USER" en vez de "USER"
+        Rol userRol = rolRepository.findByName("ROLE_USER") 
+            .orElseThrow(() -> new RuntimeException("Error: Rol 'ROLE_USER' no encontrado en la BD."));
 
-    Cliente nuevoCliente = new Cliente();
-    nuevoCliente.setNombre(request.getNombre());
-    nuevoCliente.setApellido(request.getApellido());
-    nuevoCliente.setCorreo(request.getCorreo());
-    nuevoCliente.setTelefono(String.valueOf(request.getTelefono())); // Convertir int a String
-    nuevoCliente.setContraseña(passwordEncoder.encode(request.getContraseña()));
-    nuevoCliente.setRol(userRol); // ¡ASIGNAR EL ROL!
+        Cliente nuevoCliente = new Cliente();
+        nuevoCliente.setNombre(request.getNombre());
+        nuevoCliente.setApellido(request.getApellido());
+        nuevoCliente.setCorreo(request.getCorreo());
+        if (request.getTelefono() != null) {
+             nuevoCliente.setTelefono(String.valueOf(request.getTelefono()));
+        }
+        // passwordEncoder ahora es NoOp (texto plano) gracias al cambio anterior
+        nuevoCliente.setContraseña(passwordEncoder.encode(request.getContraseña()));
+        nuevoCliente.setRol(userRol);
 
-    return clienteRepository.save(nuevoCliente);
+        return clienteRepository.save(nuevoCliente);
     }
     
-
+    // LOGIN
     public String login(LoginRequest request) {
-        // 1. Autenticar usando Spring Security
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getCorreo(), request.getContraseña())
         );
 
-        // 2. Si la autenticación es exitosa, cargar UserDetails
         final UserDetails userDetails = userDetailsService.loadUserByUsername(request.getCorreo());
-
-        // 3. Generar y devolver el token JWT
         return jwtUtil.generateToken(userDetails);
     }
-    // Método exclusivo para admins
+
+    // REGISTRO DE EMPLEADOS (ADMIN, ETC)
     public com.RutaDelSabor.ruta.models.entities.Cliente registerEmployee(com.RutaDelSabor.ruta.dto.RegisterEmployeeRequest request) {
         if (clienteRepository.findByCorreo(request.getCorreo()).isPresent()) {
             throw new RuntimeException("El correo electrónico ya está registrado");
         }
 
-        // Buscar el rol solicitado (Asegúrate de enviar el nombre exacto: VENDEDOR, DELIVERY, ADMIN)
-        Rol rolAsignado = rolRepository.findByName(request.getRol().toUpperCase())
-            .orElseThrow(() -> new RuntimeException("Error: Rol '" + request.getRol() + "' no encontrado."));
+        // Asegurar prefijo ROLE_
+        String nombreRol = request.getRol().toUpperCase().trim();
+        if (!nombreRol.startsWith("ROLE_")) {
+            nombreRol = "ROLE_" + nombreRol;
+        }
+
+        String finalNombreRol = nombreRol;
+        Rol rolAsignado = rolRepository.findByName(finalNombreRol)
+            .orElseThrow(() -> new RuntimeException("Error: Rol '" + finalNombreRol + "' no encontrado."));
 
         com.RutaDelSabor.ruta.models.entities.Cliente nuevoEmpleado = new com.RutaDelSabor.ruta.models.entities.Cliente();
         nuevoEmpleado.setNombre(request.getNombre());
         nuevoEmpleado.setApellido(request.getApellido());
         nuevoEmpleado.setCorreo(request.getCorreo());
-        nuevoEmpleado.setTelefono(String.valueOf(request.getTelefono()));
+        if (request.getTelefono() != null) {
+            nuevoEmpleado.setTelefono(String.valueOf(request.getTelefono()));
+        }
         nuevoEmpleado.setContraseña(passwordEncoder.encode(request.getContraseña()));
-        nuevoEmpleado.setRol(rolAsignado); // Asignamos el rol específico
+        nuevoEmpleado.setRol(rolAsignado);
 
         return clienteRepository.save(nuevoEmpleado);
     }

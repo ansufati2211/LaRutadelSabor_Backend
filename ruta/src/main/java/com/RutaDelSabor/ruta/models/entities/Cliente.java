@@ -29,7 +29,7 @@ public class Cliente {
     @JsonIgnore
     private String contraseña;
 
-    @Column(length = 15)
+    @Column(length = 20)
     private String telefono;
 
     @Temporal(TemporalType.DATE)

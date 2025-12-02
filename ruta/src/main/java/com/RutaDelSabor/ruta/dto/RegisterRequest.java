@@ -12,7 +12,7 @@ public class RegisterRequest {
     private String correo;
     @NotBlank @Size(min = 6)
     private String contraseña; // Cambiar a 'password' por convención
-    private int telefono;
+    private String telefono;
     // Otros campos si son necesarios para el registro
 
     // Getters y Setters
@@ -25,6 +25,6 @@ public class RegisterRequest {
     public void setCorreo(String correo) { this.correo = correo; }
     public String getContraseña() { return contraseña; }
     public void setContraseña(String contraseña) { this.contraseña = contraseña; }
-     public int getTelefono() { return telefono; }
-    public void setTelefono(int telefono) { this.telefono = telefono; }
+     public String getTelefono() { return telefono; }
+    public void setTelefono(String telefono) { this.telefono = telefono; }
 }
