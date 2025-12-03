@@ -1,3 +1,4 @@
+SECURITYCONFIG.JS
 package com.RutaDelSabor.ruta.config;
 
 import com.RutaDelSabor.ruta.security.UserDetailsServiceImpl;
@@ -50,37 +51,45 @@ public class SecurityConfig {
         return authProvider;
     }
 
-   @Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    http
-        .cors(cors -> cors.configurationSource(corsConfigurationSource())) // <--- AGREGA ESTO
-        .csrf(csrf -> csrf.disable())
-        .authorizeHttpRequests(auth -> auth
-            // Rutas públicas (Login, Registro, Ver Menu)
-            .requestMatchers("/auth/**", "/api/usuarios/login", "/api/usuarios/register").permitAll()
-            .requestMatchers(HttpMethod.GET, "/api/productos/**", "/api/categorias/**").permitAll() // <--- IMPORTANTE: Permitir ver productos a todos
-            // Rutas privadas (Admin)
-            .requestMatchers("/api/admin/**").hasAnyAuthority("ADMIN", "ROL_ADMIN") 
-            .anyRequest().authenticated()
-        )
-        .sessionManagement(sess -> sess.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-        .authenticationProvider(authenticationProvider)
-        .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        http
+            .cors(withDefaults())
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                // 1. REGLAS CRÍTICAS (Orden específico: De lo más restrictivo a lo más general)
+                
+                // Permitir preflight requests (CORS) para que el navegador no bloquee
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                
+                // Login y Auth siempre públicos
+                .requestMatchers("/api/auth/**").permitAll()
+                
+                // 2. PROTEGER RUTAS DE ADMIN DENTRO DE PRODUCTOS
+                // Esto soluciona el 403: Forzamos autenticación antes de que la regla pública capture la ruta
+                .requestMatchers("/api/productos/admin/**").hasAnyRole("ADMIN", "VENDEDOR") 
+                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "VENDEDOR", "DELIVERY")
 
-    return http.build();
-}
+                // 3. RUTAS PÚBLICAS (Menú y Catálogo para clientes)
+                // Ahora sí, el resto de productos son públicos
+                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
+                
+                // Webhook
+                .requestMatchers(HttpMethod.POST, "/api/webhook/dialogflow").permitAll()
 
-// Agrega este Bean para configurar CORS globalmente
-@Bean
-public CorsConfigurationSource corsConfigurationSource() {
-    CorsConfiguration configuration = new CorsConfiguration();
-    configuration.setAllowedOrigins(List.of("http://127.0.0.1:5500", "http://localhost:5500")); // <--- Pon aquí la URL de tu Frontend
-    configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-    configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
-    configuration.setAllowCredentials(true);
+                // Todo lo demás requiere login
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authenticationProvider(authenticationProvider());
 
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/**", configuration);
-    return source;
-}
+        http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+
+        return http.build();
+    }
 }
