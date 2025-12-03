@@ -6,7 +6,7 @@ public class RegisterEmployeeRequest {
     @NotBlank private String nombre;
     @NotBlank private String apellido;
     @NotBlank @Email private String correo;
-    @NotBlank @Size(min = 6) private String contraseña;
+    @NotBlank @Size(min = 6) private String password;
     private String telefono;
     @NotBlank private String rol; // Nuevo campo para especificar el rol (VENDEDOR, DELIVERY, ADMIN)
 
@@ -17,8 +17,8 @@ public class RegisterEmployeeRequest {
     public void setApellido(String apellido) { this.apellido = apellido; }
     public String getCorreo() { return correo; }
     public void setCorreo(String correo) { this.correo = correo; }
-    public String getContraseña() { return contraseña; }
-    public void setContraseña(String contraseña) { this.contraseña = contraseña; }
+    public String getPassword() { return password; }
+    public void setPassword(String contraseña) { this.password = contraseña; }
     public String getTelefono() { return telefono; }
     public void setTelefono(String telefono) { this.telefono = telefono; }
     public String getRol() { return rol; }
