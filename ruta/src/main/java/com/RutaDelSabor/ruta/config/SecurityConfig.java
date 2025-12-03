@@ -53,42 +53,42 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .cors(withDefaults())
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                // 1. REGLAS CRÍTICAS (Orden específico: De lo más restrictivo a lo más general)
-                
-                // Permitir preflight requests (CORS) para que el navegador no bloquee
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                
-                // Login y Auth siempre públicos
-                .requestMatchers("/api/auth/**").permitAll()
-                
-                // 2. PROTEGER RUTAS DE ADMIN DENTRO DE PRODUCTOS
-                // Esto soluciona el 403: Forzamos autenticación antes de que la regla pública capture la ruta
-                .requestMatchers("/api/productos/admin/**").hasAnyRole("ADMIN", "VENDEDOR") 
-                .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "VENDEDOR", "DELIVERY")
+                .cors(withDefaults())
+                .csrf(csrf -> csrf.disable())
+                .authorizeHttpRequests(auth -> auth
+                        // 1. REGLAS CRÍTICAS (Orden específico: De lo más restrictivo a lo más general)
 
-                // 3. RUTAS PÚBLICAS (Menú y Catálogo para clientes)
-                // Ahora sí, el resto de productos son públicos
-                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
-                
-                // Webhook
-                .requestMatchers(HttpMethod.POST, "/api/webhook/dialogflow").permitAll()
+                        // Permitir preflight requests (CORS) para que el navegador no bloquee
+                        .requestMatchers(HttpMethod.OPTIONS, "/").permitAll()
 
-                // Todo lo demás requiere login
-                .anyRequest().authenticated()
-            )
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            .authenticationProvider(authenticationProvider());
+                        // Login y Auth siempre públicos
+                        .requestMatchers("/api/auth/").permitAll()
+
+                        // 2. PROTEGER RUTAS DE ADMIN DENTRO DE PRODUCTOS
+                        // Esto soluciona el 403: Forzamos autenticación antes de que la regla pública capture la ruta
+                        .requestMatchers("/api/productos/admin/").hasAnyRole("ADMIN", "VENDEDOR")
+                        .requestMatchers("/api/admin/").hasAnyRole("ADMIN", "VENDEDOR", "DELIVERY")
+
+                        // 3. RUTAS PÚBLICAS (Menú y Catálogo para clientes)
+                        // Ahora sí, el resto de productos son públicos
+                        .requestMatchers(HttpMethod.GET, "/api/productos/").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/categorias/").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
+
+                        // Webhook
+                        .requestMatchers(HttpMethod.POST, "/api/webhook/dialogflow").permitAll()
+
+                        // Todo lo demás requiere login
+                        .anyRequest().authenticated()
+                )
+                .sessionManagement(session -> session
+                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+                )
+                .authenticationProvider(authenticationProvider());
 
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
-    }
+}
 }

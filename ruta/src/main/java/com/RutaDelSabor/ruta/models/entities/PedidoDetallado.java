@@ -3,7 +3,7 @@ package com.RutaDelSabor.ruta.models.entities;
 import java.math.BigDecimal;
 import java.util.Date;
 import jakarta.persistence.*;
-
+import com.fasterxml.jackson.annotation.JsonBackReference;
 @Entity
 @Table(name = "pedido_detallado")
 public class PedidoDetallado {
@@ -28,6 +28,7 @@ public class PedidoDetallado {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pedido_id", nullable = false)
+    @JsonBackReference
     private Pedido pedido;
 
     @ManyToOne(fetch = FetchType.LAZY)
