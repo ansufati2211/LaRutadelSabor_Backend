@@ -54,29 +54,28 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .cors(withDefaults())
-                .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.disable()) // ¡BIEN!
                 .authorizeHttpRequests(auth -> auth
-                        // 1. REGLAS CRÍTICAS (Orden específico: De lo más restrictivo a lo más general)
+                        // 1. Permisos CORS (Preflight)
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Cambiado a /** para cubrir todo
 
-                        // Permitir preflight requests (CORS) para que el navegador no bloquee
-                        .requestMatchers(HttpMethod.OPTIONS, "/").permitAll()
+                        // 2. RUTAS DE AUTENTICACIÓN (LOGIN Y REGISTRO)
+                        // IMPORTANTE: Agregamos "**" para permitir /login, /register, etc.
+                        .requestMatchers("/api/auth/**").permitAll()
 
-                        // Login y Auth siempre públicos
-                        .requestMatchers("/api/auth/").permitAll()
+                        // 3. RUTAS PROTEGIDAS (ADMIN / VENDEDOR)
+                        // También agregamos "**" para proteger sub-rutas
+                        .requestMatchers("/api/productos/admin/**").hasAnyRole("ADMIN", "VENDEDOR")
+                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "VENDEDOR", "DELIVERY")
 
-                        // 2. PROTEGER RUTAS DE ADMIN DENTRO DE PRODUCTOS
-                        // Esto soluciona el 403: Forzamos autenticación antes de que la regla pública capture la ruta
-                        .requestMatchers("/api/productos/admin/").hasAnyRole("ADMIN", "VENDEDOR")
-                        .requestMatchers("/api/admin/").hasAnyRole("ADMIN", "VENDEDOR", "DELIVERY")
+                        // 4. RUTAS PÚBLICAS (CLIENTES)
+                        // Agregamos "**" para permitir ver producto ID 1, 2, etc.
+                        .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
 
-                        // 3. RUTAS PÚBLICAS (Menú y Catálogo para clientes)
-                        // Ahora sí, el resto de productos son públicos
-                        .requestMatchers(HttpMethod.GET, "/api/productos/").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/categorias/").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
-
-                        // Webhook
+                        // Webhook (Dialogflow)
                         .requestMatchers(HttpMethod.POST, "/api/webhook/dialogflow").permitAll()
 
                         // Todo lo demás requiere login
@@ -90,5 +89,5 @@ public class SecurityConfig {
         http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
-}
+    }
 }
