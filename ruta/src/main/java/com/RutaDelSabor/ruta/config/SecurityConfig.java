@@ -55,34 +55,38 @@ public class SecurityConfig {
         return authProvider;
     }
 
-    // --- CONFIGURACIÓN DE SEGURIDAD Y FILTROS ---
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // 1. Integrar CORS aquí directamente
+            // 1. Configuración CORS Integrada (Crítico para que el front se conecte)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                // Permite opciones pre-flight de CORS explícitamente
+                // Permitir preflight requests (OPTIONS) siempre
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 
-                // Rutas Públicas de Auth
+                // Rutas Públicas (Login y Webhooks)
                 .requestMatchers("/api/auth/**").permitAll()
-                
-                // Rutas de Admin (Usamos hasAuthority para evitar problemas con el prefijo ROLE_)
+                .requestMatchers("/api/webhook/**").permitAll()
+
+                // --- REGLAS DE ADMIN (Usamos hasAuthority para aceptar 'ADMIN' sin prefijo) ---
+                // Importante: Poner estas reglas ANTES de las generales
                 .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ADMIN", "VENDEDOR")
                 .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ADMIN", "VENDEDOR")
-                .requestMatchers("/api/admin/**").hasAnyAuthority("ADMIN", "VENDEDOR")
+                .requestMatchers("/api/admin/**").hasAnyAuthority("ADMIN", "VENDEDOR", "DELIVERY")
+                
+                // Métodos de escritura protegidos globalmente (POST, PUT, DELETE)
+                .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ADMIN", "VENDEDOR")
+                .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ADMIN", "VENDEDOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ADMIN", "VENDEDOR")
 
-                // Rutas Públicas (Lectura)
+                // --- RUTAS PÚBLICAS DE LECTURA ---
                 .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
-                
-                // Webhooks
-                .requestMatchers(HttpMethod.POST, "/api/webhook/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
 
-                // Todo lo demás requiere autenticación
+                // Cualquier otra cosa requiere autenticación
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session
@@ -94,15 +98,15 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // --- CONFIGURACIÓN CORS CENTRALIZADA ---
+    // Bean de Configuración CORS
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // IMPORTANTE: Pon aquí la URL de tu frontend. "*" sirve para desarrollo pero a veces falla con credenciales.
-        configuration.setAllowedOrigins(Arrays.asList("http://127.0.0.1:5500", "http://localhost:5500", "*"));
+        // Permite tu puerto local (Live Server suele ser 5500 o 5501) y localhost normal
+        configuration.setAllowedOrigins(Arrays.asList("http://127.0.0.1:5500", "http://localhost:5500", "http://localhost:8080"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With"));
-        configuration.setAllowCredentials(false); // Pon true si especificas orígenes exactos (no "*")
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept"));
+        configuration.setAllowCredentials(true); // Permitir credenciales
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
