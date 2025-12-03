@@ -81,6 +81,6 @@ public CorsConfigurationSource corsConfigurationSource() {
 
     UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
     source.registerCorsConfiguration("/**", configuration);
-    return source
+    return source;
 }
 }
