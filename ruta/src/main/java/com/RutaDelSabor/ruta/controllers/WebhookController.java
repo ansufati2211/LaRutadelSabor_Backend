@@ -8,6 +8,7 @@ import com.RutaDelSabor.ruta.services.IClienteService;
 import com.RutaDelSabor.ruta.services.IPedidoService;
 import com.RutaDelSabor.ruta.services.IProductoService;
 import com.RutaDelSabor.ruta.services.IReporteService;
+import com.RutaDelSabor.ruta.utils.LevenshteinUtil; // <--- IMPORTANTE
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,102 +35,95 @@ public class WebhookController {
         String tag = request.getFulfillmentInfo().getTag();
         Map<String, Object> params = request.getSessionInfo().getParameters();
         
-        // CORRECCIÓN 1: Eliminada variable 'response' que no se usaba
-        log.info("Webhook llamado con Tag: {}", tag);
+        log.info("🔹 Webhook Tag recibido: {}", tag);
 
         if ("finalizar_pedido".equals(tag)) {
             return processFinalizarPedido(params);
         } else if ("recomendar_producto".equals(tag)) {
             return processRecomendacion();
-        } else if ("consultar_historial".equals(tag)) {
-             return processHistorial(params);
+        } else if ("consultar_menu".equals(tag)) { // <--- NUEVO
+            return processConsultarMenu();
         }
 
-        return ResponseEntity.ok(crearRespuestaTexto("Webhook: Acción no reconocida."));
+        return ResponseEntity.ok(crearRespuestaTexto("Webhook: Acción no reconocida (" + tag + ")."));
     }
 
-    // --- 1. LÓGICA DE PEDIDOS DINÁMICOS ---
+    // --- 1. PROCESAR PEDIDO CON BÚSQUEDA INTELIGENTE ---
     private ResponseEntity<Map<String, Object>> processFinalizarPedido(Map<String, Object> params) {
         try {
-            // 1. Obtener datos del cliente
-            String email = (String) params.get("email_cliente");
-            Cliente cliente = clienteService.buscarPorCorreo(email);
-
-            // 2. Procesar productos
-            String nombreProducto = (String) params.get("producto_solicitado"); 
-            Integer cantidad = params.get("cantidad") != null ? ((Double) params.get("cantidad")).intValue() : 1;
-
-            // Buscar producto real en BD
-            Optional<Producto> prodOpt = productoService.buscarTodosActivos().stream()
-                .filter(p -> p.getProducto().toLowerCase().contains(nombreProducto.toLowerCase()))
-                .findFirst();
-
-            if (prodOpt.isEmpty()) {
-                return ResponseEntity.ok(crearRespuestaTexto("Lo siento, no encontré el producto: " + nombreProducto));
+            // A. Obtener o crear Cliente "Invitado" si no viene email
+            String email = (String) params.getOrDefault("email_cliente", "cliente@prueba.com");
+            Cliente cliente;
+            try {
+                cliente = clienteService.buscarPorCorreo(email);
+            } catch (Exception e) {
+                // Fallback si no existe el cliente
+                log.warn("Cliente {} no encontrado, usando cliente por defecto.", email);
+                cliente = clienteService.buscarPorCorreo("cliente@prueba.com"); 
             }
 
-            Producto productoReal = prodOpt.get();
+            // B. Identificar Producto (FUZZY MATCHING)
+            String inputUsuario = (String) params.get("producto_solicitado"); 
+            Integer cantidad = params.get("cantidad") != null ? ((Number) params.get("cantidad")).intValue() : 1;
 
-            // 3. Crear DTO de Orden
+            if (inputUsuario == null) return ResponseEntity.ok(crearRespuestaTexto("No entendí qué producto deseas."));
+
+            // 🧠 AQUÍ ESTÁ LA MAGIA: Buscamos el producto más parecido
+            Optional<Producto> mejorCoincidencia = productoService.buscarTodosActivos().stream()
+                .filter(p -> LevenshteinUtil.calculateSimilarity(p.getProducto(), inputUsuario) > 0.4) // Umbral de similitud 40%
+                .sorted((p1, p2) -> Double.compare(
+                        LevenshteinUtil.calculateSimilarity(p2.getProducto(), inputUsuario),
+                        LevenshteinUtil.calculateSimilarity(p1.getProducto(), inputUsuario))) // Ordenar por mayor similitud
+                .findFirst();
+
+            if (mejorCoincidencia.isEmpty()) {
+                return ResponseEntity.ok(crearRespuestaTexto("Lo siento, no tenemos '" + inputUsuario + "' en el menú. ¿Quizás quisiste decir otra cosa?"));
+            }
+
+            Producto productoReal = mejorCoincidencia.get();
+
+            // C. Validar Stock Real
+            if (productoReal.getStock() < cantidad) {
+                return ResponseEntity.ok(crearRespuestaTexto("¡Uy! Solo me quedan " + productoReal.getStock() + " unidades de " + productoReal.getProducto() + "."));
+            }
+
+            // D. Crear la Orden
             OrdenRequestDTO ordenRequest = new OrdenRequestDTO();
             ordenRequest.setItems(List.of(new ItemDTO(productoReal.getId(), cantidad)));
-            ordenRequest.setDireccionEntrega((String) params.get("direccion"));
+            String direccion = (String) params.getOrDefault("direccion", "Recoger en tienda");
+            ordenRequest.setDireccionEntrega(direccion);
             ordenRequest.setMetodoPago("Pendiente Web");
 
-            // 4. Crear la orden "Pendiente"
             Pedido nuevoPedido = pedidoService.crearNuevaOrden(ordenRequest, 
                 new User(cliente.getCorreo(), cliente.getContraseña(), new ArrayList<>()));
 
-            // 5. RESPUESTA ESPECIAL (PAYLOAD)
-            Map<String, Object> jsonResponse = new HashMap<>();
-            
-            // CORRECCIÓN 2: Eliminada variable 'sessionInfo' que no se usaba
-
-            // Enviamos un "Payload Personalizado" que tu Frontend (JS) leerá para redirigir
-            List<Map<String, Object>> responseMessages = new ArrayList<>();
-            Map<String, Object> payloadContainer = new HashMap<>();
-            Map<String, Object> customPayload = new HashMap<>();
-            
-            customPayload.put("accion", "REDIRIGIR_PAGO");
-            customPayload.put("url", "/checkout?ordenId=" + nuevoPedido.getId());
-            customPayload.put("mensaje", "Pedido creado. Redirigiendo a pasarela de pago...");
-            
-            payloadContainer.put("payload", customPayload);
-            responseMessages.add(payloadContainer);
-
-            // Texto de respaldo
-            Map<String, Object> textContainer = new HashMap<>();
-            textContainer.put("text", Map.of("text", List.of("¡Listo! Tu orden #" + nuevoPedido.getId() + " está creada. Procede al pago.")));
-            responseMessages.add(textContainer);
-
-            jsonResponse.put("fulfillmentResponse", Map.of("messages", responseMessages));
-            return ResponseEntity.ok(jsonResponse);
+            // E. Respuesta con Payload para el Frontend
+            return construirRespuestaConPayload(nuevoPedido, productoReal.getProducto());
 
         } catch (Exception e) {
-            log.error("Error webhook:", e);
-            return ResponseEntity.ok(crearRespuestaTexto("Error procesando tu pedido: " + e.getMessage()));
+            log.error("Error crítico en webhook:", e);
+            return ResponseEntity.ok(crearRespuestaTexto("Tuve un problema técnico procesando la orden. Intenta de nuevo."));
         }
     }
 
-    // --- 2. LÓGICA DE RECOMENDACIONES (MINERÍA SIMPLE) ---
+    // --- 2. RECOMENDACIONES ---
     private ResponseEntity<Map<String, Object>> processRecomendacion() {
         List<ProductoPopularDTO> populares = reporteService.obtenerProductosPopulares(3);
         
-        String texto = "Te recomiendo probar nuestros favoritos: ";
-        texto += populares.stream()
-                .map(p -> p.getNombreProducto())
-                .collect(Collectors.joining(", "));
+        if (populares.isEmpty()) return ResponseEntity.ok(crearRespuestaTexto("Hoy todo está delicioso. ¡Prueba nuestra especialidad de la casa!"));
 
-        return ResponseEntity.ok(crearRespuestaTexto(texto + ". ¿Te provoca alguno?"));
+        String nombres = populares.stream().map(ProductoPopularDTO::getNombreProducto).collect(Collectors.joining(", "));
+        return ResponseEntity.ok(crearRespuestaTexto("Nuestros clientes aman: " + nombres + ". ¿Te anoto uno?"));
     }
     
-    // --- 3. HISTORIAL DE USUARIO ---
-    private ResponseEntity<Map<String, Object>> processHistorial(Map<String, Object> params) {
-         // Lógica pendiente: devolver el último pedido en texto.
-         return ResponseEntity.ok(crearRespuestaTexto("Aquí iría tu último pedido."));
+    // --- 3. CONSULTAR MENÚ (Dinámico) ---
+    private ResponseEntity<Map<String, Object>> processConsultarMenu() {
+        // Podrías devolver una lista de categorías aquí
+        return ResponseEntity.ok(crearRespuestaTexto("Tenemos Hamburguesas, Pizzas y Bebidas. ¿Qué te provoca hoy?"));
     }
 
-    // Helper para respuestas simples de texto
+    // --- HELPERS ---
+    
     private Map<String, Object> crearRespuestaTexto(String mensaje) {
         Map<String, Object> json = new HashMap<>();
         Map<String, Object> fulfillment = new HashMap<>();
@@ -138,5 +132,29 @@ public class WebhookController {
         fulfillment.put("messages", Collections.singletonList(Map.of("text", text)));
         json.put("fulfillmentResponse", fulfillment);
         return json;
+    }
+
+    private ResponseEntity<Map<String, Object>> construirRespuestaConPayload(Pedido pedido, String nombreProducto) {
+        Map<String, Object> jsonResponse = new HashMap<>();
+        List<Map<String, Object>> messages = new ArrayList<>();
+
+        // 1. Mensaje de Texto
+        Map<String, Object> textMessage = new HashMap<>();
+        textMessage.put("text", Map.of("text", List.of("¡Listo! He generado la orden #" + pedido.getId() + " por " + nombreProducto + ". Por favor completa el pago abajo.")));
+        messages.add(textMessage);
+
+        // 2. Payload Personalizado (Para que tu Front muestre el botón de pago)
+        Map<String, Object> payloadMessage = new HashMap<>();
+        Map<String, Object> customPayload = new HashMap<>();
+        customPayload.put("tipo", "ORDEN_CREADA");
+        customPayload.put("ordenId", pedido.getId());
+        customPayload.put("total", pedido.getTotal());
+        customPayload.put("redirectUrl", "/checkout?ordenId=" + pedido.getId());
+        
+        payloadMessage.put("payload", customPayload);
+        messages.add(payloadMessage);
+
+        jsonResponse.put("fulfillmentResponse", Map.of("messages", messages));
+        return ResponseEntity.ok(jsonResponse);
     }
 }
