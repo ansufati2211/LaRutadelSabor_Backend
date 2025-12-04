@@ -82,27 +82,31 @@ public class SecurityConfig {
     }
 
     // --- CONFIGURACIÓN CORS (CRÍTICO PARA CONEXIÓN) ---
-    @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        
-        // Permitir orígenes (Ajusta según tus puertos)
-        configuration.setAllowedOrigins(Arrays.asList(
-            "http://localhost:5500",      // Tu Front local
-            "http://127.0.0.1:5500",      // Tu Front local (IP)
-            "http://localhost:8080",      // Postman / Backend local
-            "https://larutadelsaborbackend-production.up.railway.app", // Producción Backend
-            "*" // OJO: Usar "*" solo para desarrollo rápido si sigue fallando
-        ));
+   @Bean
+public CorsConfigurationSource corsConfigurationSource() {
+    CorsConfiguration configuration = new CorsConfiguration();
+    
+    // CORRECCIÓN: Eliminamos "*" porque rompe setAllowCredentials(true)
+    configuration.setAllowedOrigins(Arrays.asList(
+        "http://localhost:5500",      // Tu Front local
+        "http://127.0.0.1:5500",      // Tu Front local (IP)
+        "http://localhost:8080",      // Postman / Backend local
+        "https://larutadelsaborbackend-production.up.railway.app" // Producción
+    ));
 
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
-        configuration.setAllowCredentials(true); // Permitir cookies/credenciales si es necesario
+    configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+    
+    // Headers necesarios para el JWT
+    configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
+    
+    // Importante: Esto habilita el envío de credenciales/cookies, 
+    // pero requiere orígenes explícitos (sin asteriscos)
+    configuration.setAllowCredentials(true); 
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
-    }
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+    source.registerCorsConfiguration("/**", configuration);
+    return source;
+}
 
     @Bean
     public PasswordEncoder passwordEncoder() {
