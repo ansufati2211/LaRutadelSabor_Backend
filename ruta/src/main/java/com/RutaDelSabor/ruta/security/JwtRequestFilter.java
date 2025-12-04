@@ -14,7 +14,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -23,7 +22,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
 
 @Component
 public class JwtRequestFilter extends OncePerRequestFilter {
@@ -42,36 +40,52 @@ public class JwtRequestFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
+        String requestURI = request.getRequestURI();
+        log.debug("🔍 Procesando request: {} {}", request.getMethod(), requestURI);
+
         try {
             String jwt = getJwtFromRequest(request);
 
-            if (StringUtils.hasText(jwt) && validateToken(jwt)) {
-                String username = getUsernameFromJWT(jwt);
-                String role = getRoleFromJWT(jwt);
+            if (StringUtils.hasText(jwt)) {
+                log.debug("🔑 Token encontrado, validando...");
 
-                log.debug("Token válido para usuario: {} con rol: {}", username, role);
+                if (validateToken(jwt)) {
+                    String username = getUsernameFromJWT(jwt);
+                    String role = getRoleFromJWT(jwt);
 
-                UserDetails userDetails = userDetailsService.loadUserByUsername(username);
+                    log.info("✅ Token válido - Usuario: {} | Rol del token: {}", username, role);
 
-                UsernamePasswordAuthenticationToken authentication =
-                        new UsernamePasswordAuthenticationToken(
-                                userDetails,
-                                null,
-                                userDetails.getAuthorities()
-                        );
+                    // Cargar el usuario completo desde la BD (con sus roles reales)
+                    UserDetails userDetails = userDetailsService.loadUserByUsername(username);
 
-                authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                    log.info("👤 UserDetails cargado - Authorities: {}", userDetails.getAuthorities());
 
-                log.debug("Autenticación establecida en SecurityContext para: {}", username);
+                    // Crear la autenticación
+                    UsernamePasswordAuthenticationToken authentication =
+                            new UsernamePasswordAuthenticationToken(
+                                    userDetails,
+                                    null,
+                                    userDetails.getAuthorities() // Usa las authorities de la BD, no del token
+                            );
+
+                    authentication.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+                    SecurityContextHolder.getContext().setAuthentication(authentication);
+
+                    log.info("🎯 Autenticación establecida en SecurityContext para: {}", username);
+                } else {
+                    log.warn("❌ Token inválido");
+                }
+            } else {
+                log.debug("ℹ️ No se encontró token en la request");
             }
         } catch (ExpiredJwtException ex) {
-            log.error("Token JWT expirado");
+            log.error("⏰ Token JWT expirado: {}", ex.getMessage());
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            response.getWriter().write("{\"error\":\"Token expirado\"}");
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":\"Token expirado\",\"message\":\"" + ex.getMessage() + "\"}");
             return;
         } catch (Exception ex) {
-            log.error("No se pudo establecer la autenticación: {}", ex.getMessage());
+            log.error("💥 Error al procesar token: {}", ex.getMessage(), ex);
         }
 
         filterChain.doFilter(request, response);
@@ -97,12 +111,17 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     }
 
     private String getRoleFromJWT(String token) {
-        Claims claims = Jwts.parser()
-                .setSigningKey(jwtSecret)
-                .parseClaimsJws(token)
-                .getBody();
+        try {
+            Claims claims = Jwts.parser()
+                    .setSigningKey(jwtSecret)
+                    .parseClaimsJws(token)
+                    .getBody();
 
-        return (String) claims.get("role");
+            return (String) claims.get("role");
+        } catch (Exception e) {
+            log.warn("No se pudo extraer el rol del token: {}", e.getMessage());
+            return null;
+        }
     }
 
     private boolean validateToken(String authToken) {
@@ -110,13 +129,13 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             Jwts.parser().setSigningKey(jwtSecret).parseClaimsJws(authToken);
             return true;
         } catch (SignatureException ex) {
-            log.error("Firma JWT inválida");
+            log.error("❌ Firma JWT inválida");
         } catch (MalformedJwtException ex) {
-            log.error("Token JWT malformado");
+            log.error("❌ Token JWT malformado");
         } catch (ExpiredJwtException ex) {
-            log.error("Token JWT expirado");
+            log.error("❌ Token JWT expirado");
         } catch (Exception ex) {
-            log.error("Error validando token: {}", ex.getMessage());
+            log.error("❌ Error validando token: {}", ex.getMessage());
         }
         return false;
     }
