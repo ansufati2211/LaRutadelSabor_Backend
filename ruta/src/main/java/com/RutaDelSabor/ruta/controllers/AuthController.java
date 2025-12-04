@@ -1,63 +1,88 @@
 package com.RutaDelSabor.ruta.controllers;
 
 import com.RutaDelSabor.ruta.dto.AuthResponse;
-import com.RutaDelSabor.ruta.dto.ErrorResponseDTO; // DTO para errores
+import com.RutaDelSabor.ruta.dto.ErrorResponseDTO;
 import com.RutaDelSabor.ruta.dto.LoginRequest;
 import com.RutaDelSabor.ruta.dto.RegisterRequest;
+import com.RutaDelSabor.ruta.security.JwtUtil; // Importante
 import com.RutaDelSabor.ruta.services.AuthService;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus; // Para HttpStatus
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager; // Importante
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken; // Importante
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UserDetails; // Importante
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.Valid;
 
 @RestController
 @RequestMapping("/api/auth")
-// @CrossOrigin(origins = "*") // Mejor configurar globalmente en WebConfig
 public class AuthController {
 
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private AuthenticationManager authenticationManager; // El motor de seguridad
+
+    @Autowired
+    private JwtUtil jwtUtil; // Tu generador de tokens arreglado
+
+    // --- REGISTRO (Se mantiene igual, delegado al servicio) ---
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody RegisterRequest registerRequest) {
         try {
             authService.register(registerRequest);
-            // Devolver un mensaje claro, el login debe ser un paso separado
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body("Usuario registrado exitosamente. Por favor, inicie sesión.");
         } catch (RuntimeException e) {
-            // Devolver error específico si el correo ya existe
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(new ErrorResponseDTO(e.getMessage()));
         } catch (Exception e) {
-            // Error genérico
-             e.printStackTrace(); // Loggear error
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(new ErrorResponseDTO("Ocurrió un error durante el registro."));
         }
     }
 
+    // --- LOGIN (Lógica Mejorada y Fusionada) ---
     @PostMapping("/login")
     public ResponseEntity<?> loginUser(@Valid @RequestBody LoginRequest loginRequest) {
         try {
-            String token = authService.login(loginRequest);
-            // Devolver el token en la respuesta
+            // 1. Autenticar usando Spring Security
+            // Esto llama internamente a UserDetailsServiceImpl.loadUserByUsername()
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            loginRequest.getCorreo(),
+                            loginRequest.getPassword()
+                    )
+            );
+
+            // 2. Si llegamos aquí, la contraseña es correcta.
+            // Obtenemos el usuario cargado (que YA TIENE los roles gracias a tu UserDetailsServiceImpl)
+            UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+
+            // 3. Generar el Token (Tu JwtUtil ahora meterá los roles dentro)
+            String token = jwtUtil.generateToken(userDetails);
+
+            // 4. Devolver respuesta
             return ResponseEntity.ok(new AuthResponse(token, "Login exitoso"));
-        } catch (RuntimeException e) {
-            // Error específico para credenciales inválidas
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED) // 401 Unauthorized
+
+        } catch (BadCredentialsException e) {
+            // Este error lo lanza authenticationManager si la contraseña está mal
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(new ErrorResponseDTO("Correo o contraseña incorrectos."));
         } catch (Exception e) {
-            // Error genérico
-             e.printStackTrace(); // Loggear error
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(new ErrorResponseDTO("Ocurrió un error durante el login."));
+                    .body(new ErrorResponseDTO("Error técnico en el login: " + e.getMessage()));
         }
     }
-    // Endpoint protegido solo para ADMIN
+
+    // --- REGISTRO DE EMPLEADOS (Protegido) ---
     @PostMapping("/register/employee")
-    //@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> registerEmployee(@Valid @RequestBody com.RutaDelSabor.ruta.dto.RegisterEmployeeRequest request) {
         try {
             authService.registerEmployee(request);

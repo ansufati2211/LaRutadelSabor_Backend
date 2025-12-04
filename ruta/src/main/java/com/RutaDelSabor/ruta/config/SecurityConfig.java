@@ -27,7 +27,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
+@EnableMethodSecurity // Permite usar @PreAuthorize en controladores si lo necesitas a futuro
 public class SecurityConfig {
 
     @Autowired
@@ -36,6 +36,8 @@ public class SecurityConfig {
     @Autowired
     private UserDetailsServiceImpl userDetailsService;
 
+    // Mantenemos NoOpPasswordEncoder porque tus usuarios en BD tienen claves sin encriptar (texto plano).
+    // Si cambias a BCrypt, tendrás que actualizar todas las contraseñas en la BD.
     @SuppressWarnings("deprecation")
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -58,43 +60,41 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                // 1. Permitir Preflight (OPTIONS)
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                
-                // 2. Rutas Públicas de Autenticación y Webhook
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/webhook/**").permitAll()
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        // 1. Permitir Preflight (OPTIONS) - Vital para que el Frontend no de error de CORS
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // 3. LECTURA PÚBLICA (CRÍTICO: Colocado ANTES de las restricciones de Admin)
-                // Esto asegura que cargar la lista de productos/categorías funcione para todos
-                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
+                        // 2. Rutas Públicas (Login y Webhooks)
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/webhook/**").permitAll()
 
-                // 4. Endpoints Específicos de Admin (Si existen controladores dedicados)
-                .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                
-                // 5. Escritura General (POST, PUT, DELETE) - Requiere Roles Específicos
-                .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        // 3. TIENDA PÚBLICA (Cualquiera puede ver productos y menú sin loguearse)
+                        .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
 
-                // 6. Panel de Administración General
-                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY")
+                        // 4. GESTIÓN DE PRODUCTOS (Solo Admin y Vendedor pueden crear/editar/borrar)
+                        // Usamos hasAnyAuthority porque en tu BD los roles ya incluyen "ROLE_"
+                        .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
 
-                // 7. Cualquier otra petición requiere estar autenticado
-                .anyRequest().authenticated()
-            )
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+                        // Endpoints explícitos de administración
+                        .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+
+                        // 5. Panel General de Administración (Incluye Pedidos)
+                        .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY")
+
+                        // 6. Todo lo demás requiere login (ej: ver perfil de cliente, hacer pedido)
+                        .anyRequest().authenticated()
+                )
+                .authenticationProvider(authenticationProvider())
+                .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -102,11 +102,13 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Permite cualquier origen (incluyendo localhost, Dialogflow, etc.)
-        configuration.setAllowedOriginPatterns(List.of("*")); 
+        // Usamos setAllowedOriginPatterns("*") para permitir Railway, Localhost, Celulares, etc.
+        configuration.setAllowedOriginPatterns(List.of("*"));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", "Access-Control-Allow-Origin"));
         configuration.setAllowCredentials(true);
+        // Exponemos el header Authorization para que el frontend pueda leerlo si es necesario
+        configuration.setExposedHeaders(List.of("Authorization"));
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
