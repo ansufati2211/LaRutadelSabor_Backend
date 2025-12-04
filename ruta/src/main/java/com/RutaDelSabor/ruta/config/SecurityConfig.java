@@ -61,42 +61,35 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // 1. CORS: Usar la configuración definida en el Bean de abajo
+            // 1. Configuración CORS Integrada (Crítico para que el front se conecte)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            
-            // 2. CSRF: Desactivar (Obligatorio para APIs REST y Webhooks)
             .csrf(csrf -> csrf.disable())
-            
             .authorizeHttpRequests(auth -> auth
-                // --- A. RUTAS PÚBLICAS CRÍTICAS ---
-                
-                // Permitir Webhook de Dialogflow SIN RESTRICCIONES (Para evitar error 403)
-                .requestMatchers("/api/webhook/**").permitAll()
-                
-                // Permitir Preflight Requests (CORS)
+                // Permitir preflight requests (OPTIONS) siempre
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 
-                // Permitir Autenticación
+                // --- RUTAS PÚBLICAS (Login y Webhooks) ---
+                // Importante: Permitimos todo en webhook para evitar bloqueos por método o headers
                 .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/webhook/**").permitAll()
 
-                // --- B. RECURSOS DE LECTURA PÚBLICOS ---
-                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
-
-                // --- C. ZONA ADMINISTRATIVA (PROTEGIDA) ---
-                // Gestión de productos (Escritura) - Requiere Rol Admin o Vendedor
+                // --- REGLAS DE ADMIN (Usamos hasAuthority para aceptar 'ADMIN' sin prefijo) ---
+                .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
+                .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
+                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY", "ADMIN", "VENDEDOR", "DELIVERY")
+                
+                // Métodos de escritura protegidos globalmente (POST, PUT, DELETE) para productos
                 .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
                 .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
                 .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
-                
-                // Endpoints específicos de administración
-                .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
-                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY", "ADMIN", "VENDEDOR", "DELIVERY")
 
-                // --- D. TODO LO DEMÁS ---
-                // Cualquier otra ruta requiere estar logueado
+                // --- RUTAS PÚBLICAS DE LECTURA ---
+                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
+
+                // Cualquier otra cosa requiere autenticación
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session
@@ -108,18 +101,18 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Bean de Configuración CORS Permisiva (Para que Google/Dialogflow pueda entrar)
+    // Bean de Configuración CORS CORREGIDO
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        // ¡CRÍTICO! Permitir todos los orígenes para evitar bloqueos externos
-        // En producción estricta se pondrían dominios, pero para que tu bot funcione YA, usa "*"
+        // ¡CAMBIO CRÍTICO AQUÍ!
+        // Usamos setAllowedOriginPatterns con "*" para permitir CUALQUIER origen (Google Dialogflow, tu Front en Vercel/Netlify, localhost, etc.)
         configuration.setAllowedOriginPatterns(List.of("*")); 
         
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(true); // Permitir credenciales
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
