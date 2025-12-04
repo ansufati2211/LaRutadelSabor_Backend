@@ -28,7 +28,7 @@ public class ProductoController {
     @Autowired
     private ICategoriaService categoriaService;
 
-    // --- Endpoints Públicos ---
+    // --- Endpoints Públicos (Cualquiera puede verlos) ---
 
     @GetMapping
     public ResponseEntity<List<Producto>> getAllPublic() {
@@ -60,7 +60,8 @@ public class ProductoController {
     // --- Endpoints de Administración y Gestión ---
 
     @GetMapping("/admin/all")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEDOR')")
+    // CORRECCIÓN: Usamos hasAnyAuthority para coincidir exacto con la BD
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_VENDEDOR')")
     public ResponseEntity<List<Producto>> getAllAdmin() {
         log.info("Admin/Vendedor: Solicitud GET /api/productos/admin/all");
         try {
@@ -73,7 +74,7 @@ public class ProductoController {
     }
 
     @GetMapping("/admin/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN', 'VENDEDOR')")
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_VENDEDOR')")
     public ResponseEntity<?> getByIdAdmin(@PathVariable Long id) {
          log.info("Admin/Vendedor: Solicitud GET /api/productos/admin/{}", id);
          try {
@@ -89,16 +90,16 @@ public class ProductoController {
     }
 
     @PostMapping("/admin")
-    @PreAuthorize("hasRole('ADMIN')")
+    // CORRECCIÓN: Permitimos al VENDEDOR crear productos también (coherencia con admin.js)
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_VENDEDOR')")
     public ResponseEntity<?> createProducto(@Valid @RequestBody Producto producto) {
-        log.info("Admin: Solicitud POST /api/productos/admin");
+        log.info("Admin/Vendedor: Solicitud POST /api/productos/admin");
         
         if (producto.getId() != null) {
              return ResponseEntity.badRequest().body(new ErrorResponseDTO("No incluya ID al crear un nuevo producto."));
         }
 
         try {
-            // [CORRECCIÓN]: Usar FindByID en lugar de buscarPorId para Categoria
             if (producto.getCategoria() != null && producto.getCategoria().getId() != null) {
                 try {
                     Categoria categoria = categoriaService.FindByID(producto.getCategoria().getId());
@@ -118,9 +119,10 @@ public class ProductoController {
     }
 
     @PutMapping("/admin/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    // CORRECCIÓN: Permitimos al VENDEDOR editar productos
+    @PreAuthorize("hasAnyAuthority('ROLE_ADMIN', 'ROLE_VENDEDOR')")
     public ResponseEntity<?> updateProducto(@PathVariable Long id, @Valid @RequestBody Producto productoDetalles) {
-         log.info("Admin: Solicitud PUT /api/productos/admin/{}", id);
+         log.info("Admin/Vendedor: Solicitud PUT /api/productos/admin/{}", id);
          try {
             Producto productoExistente = productoService.buscarPorId(id);
 
@@ -130,7 +132,6 @@ public class ProductoController {
             productoExistente.setStock(productoDetalles.getStock());
             productoExistente.setImagen(productoDetalles.getImagen());
             
-            // [CORRECCIÓN]: Usar FindByID en lugar de buscarPorId para Categoria
             if (productoDetalles.getCategoria() != null && productoDetalles.getCategoria().getId() != null) {
                  try {
                      Categoria categoria = categoriaService.FindByID(productoDetalles.getCategoria().getId());
@@ -155,7 +156,8 @@ public class ProductoController {
     }
 
     @DeleteMapping("/admin/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    // CORRECCIÓN: SOLO ADMIN puede borrar (seguridad estricta)
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public ResponseEntity<Void> deleteProducto(@PathVariable Long id) {
          log.warn("Admin: Solicitud DELETE /api/productos/admin/{}", id);
          try {
