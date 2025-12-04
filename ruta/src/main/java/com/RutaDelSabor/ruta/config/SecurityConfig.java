@@ -58,48 +58,57 @@ public class SecurityConfig {
         return authProvider;
     }
 
-    @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http
-            // 1. Configuración CORS Integrada (Crítico para que el front se conecte)
-            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            .csrf(csrf -> csrf.disable())
-            .authorizeHttpRequests(auth -> auth
-                // Permitir preflight requests (OPTIONS) siempre
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                
-                // --- RUTAS PÚBLICAS (Login y Webhooks) ---
-                // Importante: Permitimos todo en webhook para evitar bloqueos por método o headers
-                .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers("/api/webhook/**").permitAll()
+@Bean
+public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    http
+        // 1. CORS: CRÍTICO (Mantenemos tu configuración original)
+        .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+        
+        // 2. CSRF: Deshabilitado para APIs REST/JWT
+        .csrf(csrf -> csrf.disable())
+        
+        .authorizeHttpRequests(auth -> auth
+            // --- PREFLIGHT (Mantenemos esto para evitar errores en navegadores) ---
+            .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // --- REGLAS DE ADMIN (Usamos hasAuthority para aceptar 'ADMIN' sin prefijo) ---
-                .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
-                .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
-                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY", "ADMIN", "VENDEDOR", "DELIVERY")
-                
-                // Métodos de escritura protegidos globalmente (POST, PUT, DELETE) para productos
-                .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
-                .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
-                .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
+            // --- RUTAS PÚBLICAS ---
+            .requestMatchers("/api/auth/**").permitAll()     // Login y Registro
+            .requestMatchers("/api/webhook/**").permitAll()  // Chatbot (CRÍTICO)
+            .requestMatchers("/images/**", "/icon/**", "/css/**", "/js/**").permitAll() // Recursos estáticos
 
-                // --- RUTAS PÚBLICAS DE LECTURA ---
-                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
+            // --- LECTURA PÚBLICA (Cualquiera puede ver el menú) ---
+            .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
+            .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
 
-                // Cualquier otra cosa requiere autenticación
-                .anyRequest().authenticated()
-            )
-            .sessionManagement(session -> session
-                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            .authenticationProvider(authenticationProvider())
-            .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+            // --- ÁREA ADMINISTRATIVA ---
+            // CORRECCIÓN: Usamos hasAuthority para leer exactamente "ROLE_ADMIN" de la BD.
+            // Agregamos ROLE_VENDEDOR si ellos también deben poder entrar al panel de admin.
+            .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
 
-        return http.build();
-    }
+            // --- GESTIÓN DE PRODUCTOS (Crear, Editar, Eliminar) ---
+            // Aquí defines quién puede modificar el catálogo. 
+            // Si solo quieres Admin, borra "ROLE_VENDEDOR".
+            .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+            .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+            .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN") // Quizás solo el Admin debería borrar
+
+            // --- RUTAS ESPECÍFICAS DE ROLES ---
+            .requestMatchers("/api/vendedor/**").hasAuthority("ROLE_VENDEDOR")
+            .requestMatchers("/api/delivery/**").hasAuthority("ROLE_DELIVERY")
+
+            // --- TODO LO DEMÁS ---
+            .anyRequest().authenticated()
+        )
+        .sessionManagement(session -> session
+            .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+        )
+        .authenticationProvider(authenticationProvider())
+        .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+
+    return http.build();
+}
 
     // Bean de Configuración CORS CORREGIDO
    @Bean
