@@ -18,7 +18,12 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -53,41 +58,58 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(withDefaults())
-                .csrf(csrf -> csrf.disable()) // ¡BIEN!
-                .authorizeHttpRequests(auth -> auth
-                        // 1. Permisos CORS (Preflight)
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Cambiado a /** para cubrir todo
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
+                // 1. Permitir Preflight (OPTIONS)
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                
+                // 2. Rutas Públicas de Autenticación y Webhook
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/webhook/**").permitAll()
 
-                        // 2. RUTAS DE AUTENTICACIÓN (LOGIN Y REGISTRO)
-                        // IMPORTANTE: Agregamos "**" para permitir /login, /register, etc.
-                        .requestMatchers("/api/auth/**").permitAll()
+                // 3. LECTURA PÚBLICA (CRÍTICO: Colocado ANTES de las restricciones de Admin)
+                // Esto asegura que cargar la lista de productos/categorías funcione para todos
+                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
 
-                        // 3. RUTAS PROTEGIDAS (ADMIN / VENDEDOR)
-                        // También agregamos "**" para proteger sub-rutas
-                        .requestMatchers("/api/productos/admin/**").hasAnyRole("ADMIN", "VENDEDOR")
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "VENDEDOR", "DELIVERY")
+                // 4. Endpoints Específicos de Admin (Si existen controladores dedicados)
+                .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                
+                // 5. Escritura General (POST, PUT, DELETE) - Requiere Roles Específicos
+                .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
 
-                        // 4. RUTAS PÚBLICAS (CLIENTES)
-                        // Agregamos "**" para permitir ver producto ID 1, 2, etc.
-                        .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
+                // 6. Panel de Administración General
+                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY")
 
-                        // Webhook (Dialogflow)
-                        .requestMatchers(HttpMethod.POST, "/api/webhook/dialogflow").permitAll()
-
-                        // Todo lo demás requiere login
-                        .anyRequest().authenticated()
-                )
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
-                .authenticationProvider(authenticationProvider());
-
-        http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+                // 7. Cualquier otra petición requiere estar autenticado
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authenticationProvider(authenticationProvider())
+            .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        // Permite cualquier origen (incluyendo localhost, Dialogflow, etc.)
+        configuration.setAllowedOriginPatterns(List.of("*")); 
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", "Access-Control-Allow-Origin"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }
