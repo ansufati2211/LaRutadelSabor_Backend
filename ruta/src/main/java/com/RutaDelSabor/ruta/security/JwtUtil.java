@@ -14,7 +14,9 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
 import jakarta.annotation.PostConstruct;
-
+import org.springframework.security.core.GrantedAuthority; // Importante
+import java.util.List;
+import java.util.stream.Collectors;
 @Component
 public class JwtUtil {
 
@@ -53,6 +55,15 @@ public class JwtUtil {
 
     public String generateToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
+        // 1. Extraer los roles del userDetails
+        List<String> roles = userDetails.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toList());
+
+        // 2. Ponerlos dentro del mapa de "claims"
+        claims.put("roles", roles);
+        // OJO: La clave "roles" es la que luego buscarás en el Frontend o en el Filtro JWT
+
         return createToken(claims, userDetails.getUsername());
     }
 
