@@ -39,17 +39,17 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // 1. CORS: Permite que el front se conecte
+            // 1. CORS: Habilitado con la configuración de abajo
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             
-            // 2. CSRF: Deshabilitado para APIs REST
+            // 2. CSRF: Deshabilitado
             .csrf(csrf -> csrf.disable())
             
             .authorizeHttpRequests(auth -> auth
                 // --- RUTAS PÚBLICAS ---
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Preflight checks
-                .requestMatchers("/api/auth/**").permitAll()     // Login y Registro
-                .requestMatchers("/api/webhook/**").permitAll()  // Chatbot
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/api/webhook/**").permitAll()
                 .requestMatchers("/images/**", "/icon/**", "/css/**", "/js/**").permitAll()
 
                 // --- LECTURA PÚBLICA ---
@@ -58,14 +58,12 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/menu").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/comentarios").permitAll()
 
-                // --- ÁREA ADMIN (Lectura y Gestión básica) ---
+                // --- ÁREA ADMIN ---
                 .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
                 
-                // --- GESTIÓN DE PRODUCTOS (Crear/Editar = Admin y Vendedor) ---
+                // --- GESTIÓN DE PRODUCTOS ---
                 .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
                 .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                
-                // --- ELIMINAR (Solo Admin) ---
                 .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAuthority("ROLE_ADMIN")
 
                 // --- ROLES ESPECÍFICOS ---
@@ -81,12 +79,13 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // --- CONFIGURACIÓN CORS (CRÍTICO PARA CONEXIÓN) ---
-   @Bean
-public CorsConfigurationSource corsConfigurationSource() {
-    CorsConfiguration configuration = new CorsConfiguration();
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
 
-    configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+        // LA CLAVE DEL ÉXITO: Usar OriginPatterns con "*"
+        // Esto permite login desde cualquier lugar (Localhost, Railway) sin errores.
+        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
@@ -95,28 +94,7 @@ public CorsConfigurationSource corsConfigurationSource() {
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
-    
-    // CORRECCIÓN: Eliminamos "*" porque rompe setAllowCredentials(true)
-    configuration.setAllowedOrigins(Arrays.asList(
-        "http://localhost:5500",      // Tu Front local
-        "http://127.0.0.1:5500",      // Tu Front local (IP)
-        "http://localhost:8080",      // Postman / Backend local
-        "https://larutadelsaborbackend-production.up.railway.app" // Producción
-    ));
-
-    configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-    
-    // Headers necesarios para el JWT
-    configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
-    
-    // Importante: Esto habilita el envío de credenciales/cookies, 
-    // pero requiere orígenes explícitos (sin asteriscos)
-    configuration.setAllowCredentials(true); 
-
-    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-    source.registerCorsConfiguration("/**", configuration);
-    return source;
-}
+    }
 
     @Bean
     public PasswordEncoder passwordEncoder() {
