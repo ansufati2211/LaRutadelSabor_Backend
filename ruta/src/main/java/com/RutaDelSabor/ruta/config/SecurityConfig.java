@@ -66,7 +66,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // 1. Permitir Preflight (OPTIONS) - Vital para que el Frontend no de error de CORS
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-
+                        .requestMatchers("/error").permitAll()
+                        .requestMatchers("/error", "/favicon.ico", "/assets/**", "/images/**", "/css/**", "/js/**").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
                         // 2. Rutas Públicas (Login y Webhooks)
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/webhook/**").permitAll()
@@ -79,16 +81,16 @@ public class SecurityConfig {
 
                         // 4. GESTIÓN DE PRODUCTOS (Solo Admin y Vendedor pueden crear/editar/borrar)
                         // Usamos hasAnyAuthority porque en tu BD los roles ya incluyen "ROLE_"
-                        .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
-                        .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
-                        .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
 
                         // Endpoints explícitos de administración
-                        .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
-                        .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
 
                         // 5. Panel General de Administración (Incluye Pedidos)
-                        .requestMatchers("/api/admin/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY")
+                        .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY")
 
                         // 6. Todo lo demás requiere login (ej: ver perfil de cliente, hacer pedido)
                         .anyRequest().authenticated()
@@ -114,4 +116,5 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
+
 }

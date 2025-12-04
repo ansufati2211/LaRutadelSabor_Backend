@@ -34,7 +34,7 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             throw new UsernameNotFoundException("El usuario no tiene roles asignados");
         }
 
-        // 3. Obtener nombre del rol (Asegurando consistencia)
+        // 3.dsdsd Obtener nombre del rol (Asegurando consistencia)
         // Nota: En tu entidad Rol, el campo es 'name', así que usamos getName()
         String nombreRolBD = cliente.getRol().getName(); 
 
