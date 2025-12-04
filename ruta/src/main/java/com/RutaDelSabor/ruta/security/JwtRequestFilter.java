@@ -26,6 +26,14 @@ public class JwtRequestFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
 
+        // 1. EXCEPCIÓN VITAL: Si es el Webhook, dejar pasar sin mirar el token
+        // Esto evita que el token de Google (Dialogflow) cause error al intentar validarlo como token de usuario
+        if (request.getServletPath().startsWith("/api/webhook/")) {
+            chain.doFilter(request, response);
+            return;
+        }
+
+        // 2. Lógica normal de validación para el resto de la App (Login, Compras, Admin)
         final String authorizationHeader = request.getHeader("Authorization");
 
         String username = null;
@@ -36,13 +44,12 @@ public class JwtRequestFilter extends OncePerRequestFilter {
             try {
                 username = jwtUtil.extractUsername(jwt);
             } catch (Exception e) {
-                // Manejar excepciones de JWT (expirado, inválido, etc.)
-                System.out.println("Error al extraer username del token: " + e.getMessage());
+                // Logueamos pero no bloqueamos aquí, dejamos que SecurityConfig decida si rechaza (403) o no
+                System.out.println("Token inválido o expirado: " + e.getMessage());
             }
         }
 
         if (username != null && SecurityContextHolder.getContext().getAuthentication() == null) {
-
             UserDetails userDetails = this.userDetailsService.loadUserByUsername(username);
 
             if (jwtUtil.validateToken(jwt, userDetails)) {

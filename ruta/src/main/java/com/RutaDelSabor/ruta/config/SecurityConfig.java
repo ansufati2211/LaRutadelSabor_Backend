@@ -102,17 +102,16 @@ public class SecurityConfig {
     }
 
     // Bean de Configuración CORS CORREGIDO
-    @Bean
+   @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        // ¡CAMBIO CRÍTICO AQUÍ!
-        // Usamos setAllowedOriginPatterns con "*" para permitir CUALQUIER origen (Google Dialogflow, tu Front en Vercel/Netlify, localhost, etc.)
+        // --- CAMBIO OBLIGATORIO: Usar * para permitir Dialogflow ---
         configuration.setAllowedOriginPatterns(List.of("*")); 
         
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
-        configuration.setAllowCredentials(true); // Permitir credenciales
+        configuration.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
