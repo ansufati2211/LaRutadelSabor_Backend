@@ -25,6 +25,9 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 import java.util.List;
 
+import static org.springframework.security.config.Customizer.withDefaults;
+
+@SuppressWarnings("unused")
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity
@@ -58,46 +61,42 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // 1. CORS: Permitir acceso desde cualquier origen (Frontend, Dialogflow, etc.)
+            // 1. CORS: Usar la configuración definida en el Bean de abajo
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             
-            // 2. CSRF: Desactivar (No necesario para APIs REST stateless)
+            // 2. CSRF: Desactivar (Obligatorio para APIs REST y Webhooks)
             .csrf(csrf -> csrf.disable())
             
             .authorizeHttpRequests(auth -> auth
-                // --- RUTAS PÚBLICAS (Sin Login) ---
+                // --- A. RUTAS PÚBLICAS CRÍTICAS ---
                 
-                // A. Webhook de Dialogflow (¡CRÍTICO!)
-                // Permitimos todo en /api/webhook/** para evitar problemas de 403
+                // Permitir Webhook de Dialogflow SIN RESTRICCIONES (Para evitar error 403)
                 .requestMatchers("/api/webhook/**").permitAll()
                 
-                // B. Autenticación
-                .requestMatchers("/api/auth/**").permitAll()
+                // Permitir Preflight Requests (CORS)
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 
-                // C. Recursos Públicos (Menú, Productos, Imágenes)
+                // Permitir Autenticación
+                .requestMatchers("/api/auth/**").permitAll()
+
+                // --- B. RECURSOS DE LECTURA PÚBLICOS ---
                 .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
-                
-                // D. Swagger / UI Docs (Opcional, pero útil si lo tienes)
-                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                
-                // E. Preflight CORS (OPTIONS)
-                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // --- RUTAS PROTEGIDAS (Requieren Token) ---
-                
-                // F. Administración (Solo escritura de productos/categorías)
+                // --- C. ZONA ADMINISTRATIVA (PROTEGIDA) ---
+                // Gestión de productos (Escritura) - Requiere Rol Admin o Vendedor
                 .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
                 .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
                 .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
                 
-                // G. Endpoints específicos de Admin
-                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY", "ADMIN", "VENDEDOR", "DELIVERY")
+                // Endpoints específicos de administración
                 .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
+                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY", "ADMIN", "VENDEDOR", "DELIVERY")
 
-                // H. Cualquier otra cosa -> Requiere estar logueado (Usuario normal)
+                // --- D. TODO LO DEMÁS ---
+                // Cualquier otra ruta requiere estar logueado
                 .anyRequest().authenticated()
             )
             .sessionManagement(session -> session
@@ -109,14 +108,15 @@ public class SecurityConfig {
         return http.build();
     }
 
-    // Configuración CORS Global
+    // Bean de Configuración CORS Permisiva (Para que Google/Dialogflow pueda entrar)
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        // Permitir todos los orígenes (*) es lo más fácil para debuggear,
-        // pero en producción idealmente pones tus dominios.
-        // Para que Dialogflow conecte sin líos, permitir todo es seguro aquí porque es una API pública.
+        
+        // ¡CRÍTICO! Permitir todos los orígenes para evitar bloqueos externos
+        // En producción estricta se pondrían dominios, pero para que tu bot funcione YA, usa "*"
         configuration.setAllowedOriginPatterns(List.of("*")); 
+        
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
         configuration.setAllowCredentials(true);
