@@ -39,7 +39,7 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // 1. CORS: Habilitado con la configuración de abajo
+            // 1. CORS: Habilitado correctamente
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             
             // 2. CSRF: Deshabilitado
@@ -83,8 +83,7 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // LA CLAVE DEL ÉXITO: Usar OriginPatterns con "*"
-        // Esto permite login desde cualquier lugar (Localhost, Railway) sin errores.
+        // USAMOS EL PATRÓN "*" PARA ACEPTAR TODO SIN ERRORES
         configuration.setAllowedOriginPatterns(Arrays.asList("*"));
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
