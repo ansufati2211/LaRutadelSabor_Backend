@@ -79,16 +79,16 @@ public class SecurityConfig {
 
                         // 4. GESTIÓN DE PRODUCTOS (Solo Admin y Vendedor pueden crear/editar/borrar)
                         // Usamos hasAnyAuthority porque en tu BD los roles ya incluyen "ROLE_"
-                        .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                        .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                        .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
 
                         // Endpoints explícitos de administración
-                        .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
-                        .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
+                        .requestMatchers("/api/categorias/admin/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR")
 
                         // 5. Panel General de Administración (Incluye Pedidos)
-                        .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY")
+                        .requestMatchers("/api/admin/**").hasAnyAuthority("ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY")
 
                         // 6. Todo lo demás requiere login (ej: ver perfil de cliente, hacer pedido)
                         .anyRequest().authenticated()
