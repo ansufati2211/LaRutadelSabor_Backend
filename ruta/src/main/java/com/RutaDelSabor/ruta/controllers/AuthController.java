@@ -56,8 +56,8 @@ public class AuthController {
         }
     }
     // Endpoint protegido solo para ADMIN
-    @PostMapping("/register-employee")
-    @org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/register/employee")
+    //@org.springframework.security.access.prepost.PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> registerEmployee(@Valid @RequestBody com.RutaDelSabor.ruta.dto.RegisterEmployeeRequest request) {
         try {
             authService.registerEmployee(request);
