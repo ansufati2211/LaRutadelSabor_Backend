@@ -18,7 +18,12 @@ import org.springframework.security.crypto.password.NoOpPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import static org.springframework.security.config.Customizer.withDefaults;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 @EnableWebSecurity
@@ -53,41 +58,71 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-                .cors(withDefaults())
-                .csrf(csrf -> csrf.disable()) // ¡BIEN!
-                .authorizeHttpRequests(auth -> auth
-                        // 1. Permisos CORS (Preflight)
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // Cambiado a /** para cubrir todo
+            // 1. CORS: Permitir acceso desde cualquier origen (Frontend, Dialogflow, etc.)
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+            
+            // 2. CSRF: Desactivar (No necesario para APIs REST stateless)
+            .csrf(csrf -> csrf.disable())
+            
+            .authorizeHttpRequests(auth -> auth
+                // --- RUTAS PÚBLICAS (Sin Login) ---
+                
+                // A. Webhook de Dialogflow (¡CRÍTICO!)
+                // Permitimos todo en /api/webhook/** para evitar problemas de 403
+                .requestMatchers("/api/webhook/**").permitAll()
+                
+                // B. Autenticación
+                .requestMatchers("/api/auth/**").permitAll()
+                
+                // C. Recursos Públicos (Menú, Productos, Imágenes)
+                .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
+                
+                // D. Swagger / UI Docs (Opcional, pero útil si lo tienes)
+                .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                
+                // E. Preflight CORS (OPTIONS)
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // 2. RUTAS DE AUTENTICACIÓN (LOGIN Y REGISTRO)
-                        // IMPORTANTE: Agregamos "**" para permitir /login, /register, etc.
-                        .requestMatchers("/api/auth/**").permitAll()
+                // --- RUTAS PROTEGIDAS (Requieren Token) ---
+                
+                // F. Administración (Solo escritura de productos/categorías)
+                .requestMatchers(HttpMethod.POST, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
+                .requestMatchers(HttpMethod.PUT, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
+                .requestMatchers(HttpMethod.DELETE, "/api/productos/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
+                
+                // G. Endpoints específicos de Admin
+                .requestMatchers("/api/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ROLE_DELIVERY", "ADMIN", "VENDEDOR", "DELIVERY")
+                .requestMatchers("/api/productos/admin/**").hasAnyAuthority("ROLE_ADMIN", "ROLE_VENDEDOR", "ADMIN", "VENDEDOR")
 
-                        // 3. RUTAS PROTEGIDAS (ADMIN / VENDEDOR)
-                        // También agregamos "**" para proteger sub-rutas
-                        .requestMatchers("/api/productos/admin/**").hasAnyRole("ADMIN", "VENDEDOR")
-                        .requestMatchers("/api/admin/**").hasAnyRole("ADMIN", "VENDEDOR", "DELIVERY")
-
-                        // 4. RUTAS PÚBLICAS (CLIENTES)
-                        // Agregamos "**" para permitir ver producto ID 1, 2, etc.
-                        .requestMatchers(HttpMethod.GET, "/api/productos/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/categorias/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/menu/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/comentarios/**").permitAll()
-
-                        // Webhook (Dialogflow)
-                        .requestMatchers(HttpMethod.POST, "/api/webhook/dialogflow").permitAll()
-
-                        // Todo lo demás requiere login
-                        .anyRequest().authenticated()
-                )
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-                )
-                .authenticationProvider(authenticationProvider());
-
-        http.addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
+                // H. Cualquier otra cosa -> Requiere estar logueado (Usuario normal)
+                .anyRequest().authenticated()
+            )
+            .sessionManagement(session -> session
+                .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
+            )
+            .authenticationProvider(authenticationProvider())
+            .addFilterBefore(jwtRequestFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    // Configuración CORS Global
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        // Permitir todos los orígenes (*) es lo más fácil para debuggear,
+        // pero en producción idealmente pones tus dominios.
+        // Para que Dialogflow conecte sin líos, permitir todo es seguro aquí porque es una API pública.
+        configuration.setAllowedOriginPatterns(List.of("*")); 
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin"));
+        configuration.setAllowCredentials(true);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+        return source;
     }
 }
