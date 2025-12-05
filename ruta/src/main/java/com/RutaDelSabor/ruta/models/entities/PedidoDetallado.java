@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.Date;
 import jakarta.persistence.*;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 @Entity
 @Table(name = "pedido_detallado")
 public class PedidoDetallado {
@@ -13,22 +14,22 @@ public class PedidoDetallado {
     private Long id;
 
     private int cantidad;
-    
+
     @Column(precision = 10, scale = 2)
     private BigDecimal subtotal;
-    
+
     @Column(name = "aud_anulado")
     private boolean audAnulado;
-    
+
     @Column(name = "created_at")
     private Date createdAt;
-    
+
     @Column(name = "updated_at")
     private Date updatedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pedido_id", nullable = false)
-    @JsonBackReference
+    @JsonIgnore
     private Pedido pedido;
 
     @ManyToOne(fetch = FetchType.LAZY)
