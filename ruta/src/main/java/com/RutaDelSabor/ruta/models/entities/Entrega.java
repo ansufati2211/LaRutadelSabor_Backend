@@ -2,7 +2,7 @@ package com.RutaDelSabor.ruta.models.entities;
 
 import java.util.Date;
 import jakarta.persistence.*;
-
+import com.fasterxml.jackson.annotation.JsonIgnore; // <--- IMPORTANTE
 @Entity
 @Table(name = "entrega")
 public class Entrega {
@@ -36,6 +36,7 @@ public class Entrega {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pedido_id", nullable = false, unique = true)
+    @JsonIgnore
     private Pedido pedido;
 
     public Entrega() {}

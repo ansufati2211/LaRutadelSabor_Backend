@@ -3,7 +3,7 @@ package com.RutaDelSabor.ruta.models.entities;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 import java.util.Date;
-
+import com.fasterxml.jackson.annotation.JsonIgnore; // <--- IMPORTANTE
 @Entity
 @Table(name = "comprobante")
 public class Comprobante {
@@ -44,6 +44,7 @@ public class Comprobante {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "pedido_id", nullable = false, unique = true)
+    @JsonIgnore
     private Pedido pedido;
 
     public Comprobante() {}
