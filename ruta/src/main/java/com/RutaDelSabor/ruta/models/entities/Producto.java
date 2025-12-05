@@ -13,7 +13,6 @@ public class Producto {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-     @JsonProperty("nombre") // <--- 2. AGREGAR ESTA LÍNEA SOBRE EL CAMPO "producto"
     private String producto;
     
     @Column(precision = 10, scale = 2)
