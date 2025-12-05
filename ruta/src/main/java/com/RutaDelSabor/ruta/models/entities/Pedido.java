@@ -19,10 +19,10 @@ public class Pedido {
     @Column(name = "fecha_pedido", nullable = false)
     private Date fechaPedido;
 
-    @Column(length = 255)
+    @Column(length = 1000) // Aumentamos tamaño por si acaso
     private String direccion;
 
-    @Column(length = 255)
+    @Column(length = 1000) // Aumentamos tamaño por si acaso
     private String referencia;
 
     @Temporal(TemporalType.TIMESTAMP)
@@ -105,22 +105,36 @@ public class Pedido {
         }
         nuevoEstado.setPedido(this);
         this.historialEstados.add(nuevoEstado);
-        this.estadoActual = nuevoEstado.getTipoEstado(); // CORREGIDO
+        this.estadoActual = nuevoEstado.getTipoEstado();
         this.updatedAt = new Date();
     }
 
-    // --- Getters y Setters Corregidos ---
+    // --- Getters y Setters ---
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
 
     public Date getFechaPedido() { return fechaPedido; }
     public void setFechaPedido(Date fechaPedido) { this.fechaPedido = fechaPedido; }
 
-    public String getDireccion() { return direccion; }
+    // --- GETTERS MODIFICADOS (Protección) ---
+    public String getDireccion() { 
+        if (this.direccion != null && this.direccion.length() > 200) {
+            return this.direccion.substring(0, 200) + "...";
+        }
+        return direccion; 
+    }
+    // ESTE ES EL SETTER QUE FALTABA:
     public void setDireccion(String direccion) { this.direccion = direccion; }
 
-    public String getReferencia() { return referencia; }
+    public String getReferencia() { 
+        if (this.referencia != null && this.referencia.length() > 200) {
+            return "Referencia muy larga (posible error)";
+        }
+        return referencia; 
+    }
+    // ESTE ES EL SETTER QUE FALTABA:
     public void setReferencia(String referencia) { this.referencia = referencia; }
+    // ----------------------------------------
 
     public Date getTiempoEstimado() { return tiempoEstimado; }
     public void setTiempoEstimado(Date tiempoEstimado) { this.tiempoEstimado = tiempoEstimado; }
